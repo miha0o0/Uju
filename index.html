@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>천체 자전 및 우주 시뮬레이터</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #fff;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            max-width: 300px;
+            pointer-events: none;
+        }
+        h1 { font-size: 16px; margin: 0 0 10px 0; color: #4fa3ff; }
+        p { font-size: 12px; margin: 5px 0; color: #ccc; }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 20px;
+            border-radius: 20px;
+            border: 1px solid #555;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        input[type=range] { width: 150px; }
+    </d>
+</head>
+<body>
+    <div id="info">
+        <h1>천체 3D 자전 시뮬레이터</h1>
+        <p>🖱️ 마우스 드래그: 시점 회전</p>
+        <p>📜 휠: 줌 인/아웃</p>
+        <p>✨ 태양계, 알파 센타우리(A, B, 프록시마), 시리우스, 안타레스의 자전 모습을 관찰하세요.</p>
+    </div>
+
+    <div id="controls">
+        <label for="timeScale">시간 배율:</label>
+        <input type="range" id="timeScale" min="1" max="1000" value="100">
+        <span id="scaleValue">100x</span>
+    </div>
+
+    <!-- Three.js 및 OrbitControls CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <script>
+        // 씬, 카메라, 렌더러 설정
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(0, 50, 150);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 조명 설정
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+
+        const sunLight = new THREE.PointLight(0xffffff, 2, 2000);
+        scene.add(sunLight);
+
+        // 배경 별들 생성
+        const starsGeometry = new THREE.BufferGeometry();
+        const starsCount = 2000;
+        const starPositions = new Float32Array(starsCount * 3);
+        for(let i = 0; i < starsCount * 3; i++) {
+            starPositions[i] = (Math.random() - 0.5) * 2000;
+        }
+        starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+        const starsMaterial = new THREE.PointsMaterial({color: 0xffffff, size: 1.5});
+        const starField = new THREE.Points(starsGeometry, starsMaterial);
+        scene.add(starField);
+
+        // 천체 데이터를 담을 배열
+        const celestialBodies = [];
+
+        // 텍스처 대신 컬러와 발광을 이용한 프로시저럴 천체 생성 함수
+        function createCelestialBody(name, radius, color, position, rotationSpeed, emissive = false) {
+            const geometry = new THREE.SphereGeometry(radius, 32, 32);
+            const material = emissive ? 
+                new THREE.MeshBasicMaterial({ color: color }) : 
+                new THREE.MeshStandardMaterial({ color: color, roughness: 0.8 });
+            
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.position.set(position.x, position.y, position.z);
+            scene.add(mesh);
+
+            celestialBodies.push({
+                mesh: mesh,
+                speed: rotationSpeed
+            });
+
+            return mesh;
+        }
+
+        // 1. 태양계 중심 (태양 & 지구)
+        const sun = createCelestialBody("태양", 12, 0xffaa00, {x: -60, y: 0, z: 0}, 0.002, true);
+        const earth = createCelestialBody("지구", 2, 0x2233ff, {x: -35, y: 0, z: 0}, 0.05);
+
+        // 2. 알파 센타우리 시스템 (리길켄타루스 A, 톨리만 B, 프록시마)
+        const alphaA = createCelestialBody("알파 센타우리 A (리길)", 10, 0xffeedd, {x: 0, y: 0, z: 0}, 0.003, true);
+        const alphaB = createCelestialBody("알파 센타우리 B (톨리만)", 7, 0xffcc88, {x: 20, y: 0, z: 0}, 0.004, true);
+        const proxima = createCelestialBody("프록시마 센타우리", 2, 0xff4444, {x: 40, y: 5, z: 10}, 0.01, true);
+
+        // 3. 시리우스 (A & B 시스템 표현)
+        const sirius = createCelestialBody("시리우스 A", 8, 0xccffff, {x: 75, y: 0, z: 0}, 0.015, true);
+
+        // 4. 안타레스 (적색초거성 - 압도적인 크기)
+        const antares = createCelestialBody("안타레스", 30, 0xff3300, {x: 130, y: 0, z: 0}, 0.001, true);
+
+        // 시간 배율 조절 UI 연동
+        let timeMultiplier = 100;
+        const rangeInput = document.getElementById('timeScale');
+        const scaleValueLabel = document.getElementById('scaleValue');
+
+        rangeInput.addEventListener('input', (e) => {
+            timeMultiplier = parseFloat(e.target.value);
+            scaleValueLabel.textContent = timeMultiplier + 'x';
+        });
+
+        // 애니메이션 루프
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+
+            // 각 천체 자전 속도에 맞춰 회전 적용
+            celestialBodies.forEach(body => {
+                body.mesh.rotation.y += body.speed * delta * (timeMultiplier * 0.1);
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // 창 크기 변경 대응
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+    </html>
